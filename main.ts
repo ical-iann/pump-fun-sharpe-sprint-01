@@ -1,4 +1,4 @@
-// Launch sniper for the pump.fun replay (hourly Sharpe, not PnL).
+// Clean Sharpe Sniper — pump.fun replay bot (hourly Sharpe, not PnL).
 //
 // Idea: the edge on a bonding curve is being early. We watch every curve
 // from its CreateEvent and buy only in its first 300 slots, when the tape
@@ -14,7 +14,8 @@
 // coins per elapsed hour after the first 30 minutes), one small "scout"
 // (0.012 SOL) is opened on the most liquid fresh curve with recent buys and
 // exited on the same tight rules. Scouts are real trades on curves with
-// genuine buy flow, not wash flips.
+// genuine buy flow, not wash flips. Since v2 a scout must also be a fresh
+// launch (age 20-300 slots), never a stale curve chased just for pacing.
 //
 // Deterministic: no clock, no randomness, no network. Iteration only over
 // insertion-ordered maps fed by the batch stream. Price is the bonding-curve
@@ -195,6 +196,11 @@ await runBot({
         for (const [mint, t] of tapes) {
           if (state.positions.has(mint) || selling.has(mint) || scouts.has(mint)) continue;
           if (t.entries >= MAX_ENTRIES_PER_MINT) continue;
+          // v2: scouts must be fresh launches too — never chase a stale curve
+          // whose early move is already over, even when pacing lags.
+          if (t.created === null) continue;
+          const age = batch.slot - t.created;
+          if (age < MIN_AGE_SLOTS || age > MAX_AGE_SLOTS) continue;
           const curve = state.curves.get(mint);
           if (curve === undefined || curve.complete) continue;
           const rqSol = Number(curve.real_quote_reserves) / 1e9;
